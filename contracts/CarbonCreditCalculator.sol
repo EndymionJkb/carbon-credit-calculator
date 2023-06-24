@@ -136,21 +136,25 @@ contract CarbonCreditCalculator {
      * @dev Send the carbon credit total cross-chain
      * @param destinationDomain - the chain id of the destination.
      * @param recipient - the address of the L2 `CarbonCreditReceiver` contract.
+     * @param payRelayer - if set, will manually pay gas. Otherwise, throws itself upon the mercy of the relayer.
      */
     function sendTotalCarbonCredits(
         uint32 destinationDomain,
-        address recipient
+        address recipient,
+        bool payRelayer
     ) external payable returns (bytes32 msgID) {
         bytes32 encodedRecipient = bytes32(uint256(uint160(recipient)));
         bytes memory encodedCredits = abi.encode(msg.sender, getTotalCarbonCredits(msg.sender));
 
         msgID = _mailbox.dispatch(destinationDomain, encodedRecipient, encodedCredits);
 
-        // Pay for gas
-        uint256 gasAmount = _gasPaymaster.quoteGasPayment(destinationDomain, 100_000);
+        if (payRelayer) {
+            // Pay for gas
+            uint256 gasAmount = _gasPaymaster.quoteGasPayment(destinationDomain, 100_000);
 
-        // Refund to sender
-        _gasPaymaster.payForGas{ value: msg.value }(msgID, destinationDomain, gasAmount, msg.sender);
+            // Refund to sender
+            _gasPaymaster.payForGas{ value: msg.value }(msgID, destinationDomain, gasAmount, msg.sender);
+        }
 
         emit TotalCarbonCreditsSent(msg.sender, destinationDomain, recipient);
 
