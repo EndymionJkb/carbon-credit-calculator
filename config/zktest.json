@@ -1,0 +1,22 @@
+{
+  "chains": {
+    "polygonzkevmtestnet": {
+      "name": "polygonzkevmtestnet",
+      "domain": 1442,
+      "addresses": {
+        "mailbox": "0x0282ee93886E62627C863D9Ec88F1408eA7Aeb3B",
+        "interchainGasPaymaster": "0x57e69f9cC96Fb9324a196322367520ecE437d896",
+        "validatorAnnounce": "0x0b07f32bbDba064269e2a2c947E314AE41c478ca"
+      },
+      "protocol": "ethereum",
+      "finalityBlocks": 1,
+      "connection": {
+        "type": "http"
+      },
+      "index": {
+        "from": 716661
+      }
+    }
+  }
+}
+
