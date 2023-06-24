@@ -32,8 +32,34 @@ interface IVault {
   ) external view returns (address, PoolSpecialization);
 }
 
+interface IMailbox {
+  function localDomain() external view returns (uint32);
+
+  function dispatch(
+    uint32 _destinationDomain,
+    bytes32 _recipientAddress,
+    bytes calldata _messageBody
+  ) external returns (bytes32);
+}
+
+interface IInterchainGasPaymaster {
+  function payForGas(
+    bytes32 _messageId,
+    uint32 _destinationDomain,
+    uint256 _gasAmount,
+    address _refundAddress
+  ) external payable;
+
+  function quoteGasPayment(
+    uint32 _destinationDomain,
+    uint256 _gasAmount
+  ) external view returns (uint256);
+}
+
 contract CarbonCreditCounter {
   uint256 private constant _SCALING_FACTOR = 1e18;
+
+  uint16 private constant _POLYGON_CHAIN_ID = 137;
 
   address public constant BALANCER_VAULT =
     0xBA12222222228d8Ba445958a75a0704d566BF2C8;
@@ -43,11 +69,22 @@ contract CarbonCreditCounter {
   bytes32 public constant BALANCER_BCT_POOL_ID =
     0x16faf9f73748013155b7bc116a3008b57332d1e600020000000000000000006d;
 
+  // This only applies on Polygon mainnet
+  address public constant HYPERLAND_MAILBOX =
+    0x35231d4c2D8B8ADcB5617A638A0c4548684c7C70;
+
   // The list of carbon tokens we are measuring; would be different addresses on different chains
   IERC20[] private _carbonTokens;
 
-  // Their relative weights (e.g., tons per token)
+  // Their relative weights (e.g., tons per token). This is an 18-decimal floating point value.
   uint256[] private _tokenWeights;
+
+  uint16 private immutable _chainId;
+
+  // Hyperlane integration. Send token balances to an L2 for cross-chain Dapps.
+  IMailbox private immutable _mailbox;
+
+  IInterchainGasPaymaster private immutable _gasPaymaster;
 
   /**
    * @dev Error thrown if you try to look at the zero address
@@ -59,10 +96,20 @@ contract CarbonCreditCounter {
    */
   error InputLengthMismatch();
 
-  constructor(IERC20[] memory carbonTokens, uint256[] memory tokenWeights) {
+  constructor(
+    uint16 chainId,
+    IMailbox hyperlaneMailbox,
+    IInterchainGasPaymaster gasPaymaster,
+    IERC20[] memory carbonTokens,
+    uint256[] memory tokenWeights
+  ) {
     if (carbonTokens.length != tokenWeights.length) {
       revert InputLengthMismatch();
     }
+
+    _chainId = chainId;
+    _mailbox = hyperlaneMailbox;
+    _gasPaymaster = gasPaymaster;
 
     if (carbonTokens.length > 0) {
       _carbonTokens = new IERC20[](carbonTokens.length);
@@ -79,33 +126,67 @@ contract CarbonCreditCounter {
    * @dev Check the wallet, internal balance, and pool for tokens
    * @param user - the account we are checking for credits
    */
-  function getTotalCarbonCredits(address user) external view returns (uint256) {
+  function getTotalCarbonCredits(address user) public view returns (uint256) {
     if (user == address(0)) {
       revert InvalidAddress();
     }
 
-    // Are they an LP in the pool?
     uint256 poolBalance;
 
-    (address poolAddress, ) = IVault(BALANCER_VAULT).getPool(
-      BALANCER_BCT_POOL_ID
-    );
-
-    uint256 bptBalance = IERC20(poolAddress).balanceOf(user);
-
-    if (bptBalance > 0) {
-      uint256 totalSupply = IERC20(poolAddress).totalSupply();
-
-      // This is an immutable 50/50 pool with USDC/BCT - BCT is the 2nd token
-      (, uint256[] memory balances, ) = IVault(BALANCER_VAULT).getPoolTokens(
+    // Are they an LP in the pool? This pool is on Polygon Mainnet
+    if (_chainId == _POLYGON_CHAIN_ID) {
+      (address poolAddress, ) = IVault(BALANCER_VAULT).getPool(
         BALANCER_BCT_POOL_ID
       );
 
-      // The user holds bptBalance/totalSupply of the BCT token
-      poolBalance = (balances[1] * bptBalance) / totalSupply;
+      uint256 bptBalance = IERC20(poolAddress).balanceOf(user);
+
+      if (bptBalance > 0) {
+        uint256 totalSupply = IERC20(poolAddress).totalSupply();
+
+        // This is an immutable 50/50 pool with USDC/BCT - BCT is the 2nd token
+        (, uint256[] memory balances, ) = IVault(BALANCER_VAULT).getPoolTokens(
+          BALANCER_BCT_POOL_ID
+        );
+
+        // The user holds bptBalance/totalSupply of the BCT token
+        poolBalance = (balances[1] * bptBalance) / totalSupply;
+      }
     }
 
     return _getWalletBalances(user) + _getInternalBalances(user) + poolBalance;
+  }
+
+  function sendCarbonCreditBalance(
+    uint32 destinationDomain,
+    address recipient
+  ) external payable returns (bytes32 msgID) {
+    bytes32 encodedRecipient = bytes32(uint256(uint160(recipient)));
+    bytes memory encodedCredits = abi.encodePacked(
+      getTotalCarbonCredits(msg.sender)
+    );
+
+    msgID = _mailbox.dispatch(
+      destinationDomain,
+      encodedRecipient,
+      encodedCredits
+    );
+
+    // Pay for gas
+    uint256 gasAmount = _gasPaymaster.quoteGasPayment(
+      destinationDomain,
+      100_000
+    );
+
+    // Refund to sender
+    _gasPaymaster.payForGas{ value: msg.value }(
+      msgID,
+      destinationDomain,
+      gasAmount,
+      msg.sender
+    );
+
+    return msgID;
   }
 
   function _getWalletBalances(
