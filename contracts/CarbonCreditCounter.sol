@@ -33,6 +33,8 @@ interface IVault {
 }
 
 contract CarbonCreditCounter {
+  uint256 private constant _SCALING_FACTOR = 1e18;
+
   address public constant BALANCER_VAULT =
     0xBA12222222228d8Ba445958a75a0704d566BF2C8;
 
@@ -110,7 +112,9 @@ contract CarbonCreditCounter {
     address user
   ) private view returns (uint256 totalCredits) {
     for (uint256 i = 0; i < _carbonTokens.length; i++) {
-      totalCredits += _carbonTokens[i].balanceOf(user) * _tokenWeights[i];
+      totalCredits +=
+        (_carbonTokens[i].balanceOf(user) * _tokenWeights[i]) /
+        _SCALING_FACTOR;
     }
   }
 
@@ -121,7 +125,9 @@ contract CarbonCreditCounter {
       .getInternalBalance(user, _carbonTokens);
 
     for (uint256 i = 0; i < _carbonTokens.length; i++) {
-      totalCredits += internalBalances[i] * _tokenWeights[i];
+      totalCredits +=
+        (internalBalances[i] * _tokenWeights[i]) /
+        _SCALING_FACTOR;
     }
   }
 }
