@@ -21,8 +21,6 @@ interface IVault {
 }
 
 interface IMailbox {
-    function localDomain() external view returns (uint32);
-
     function dispatch(
         uint32 _destinationDomain,
         bytes32 _recipientAddress,
