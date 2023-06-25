@@ -149,11 +149,8 @@ contract CarbonCreditCalculator {
         msgID = _mailbox.dispatch(destinationDomain, encodedRecipient, encodedCredits);
 
         if (payRelayer) {
-            // Pay for gas
-            uint256 gasAmount = _gasPaymaster.quoteGasPayment(destinationDomain, 100_000);
-
-            // Refund to sender
-            _gasPaymaster.payForGas{ value: msg.value }(msgID, destinationDomain, gasAmount, msg.sender);
+            // Pay for gas; refund to sender
+            _gasPaymaster.payForGas{ value: msg.value }(msgID, destinationDomain, 100_000, msg.sender);
         }
 
         emit TotalCarbonCreditsSent(msg.sender, destinationDomain, recipient);
