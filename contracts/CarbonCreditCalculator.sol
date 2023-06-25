@@ -157,8 +157,6 @@ contract CarbonCreditCalculator {
         }
 
         emit TotalCarbonCreditsSent(msg.sender, destinationDomain, recipient);
-
-        return msgID;
     }
 
     function _getWalletBalances(address user) private view returns (uint256 totalCredits) {
