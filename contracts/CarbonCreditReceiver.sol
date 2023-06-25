@@ -2,6 +2,8 @@
 
 pragma solidity ^0.8.4;
 
+import "./InterchainSecurityModule.sol";
+
 interface IMessageRecipient {
     /**
      * @notice Handle an interchain message
@@ -12,13 +14,22 @@ interface IMessageRecipient {
     function handle(uint32 _origin, bytes32 _sender, bytes calldata _body) external;
 }
 
+interface ISpecifiesInterchainSecurityModule {
+    function interchainSecurityModule()
+        external
+        view
+        returns (IInterchainSecurityModule);
+}
+
 /**
  * @title Carbon Credit Receiver
  * @notice Receive users' carbon credit totals from L1, using Hyperlane.
  */
-contract CarbonCreditReceiver is IMessageRecipient {
+contract CarbonCreditReceiver is IMessageRecipient, ISpecifiesInterchainSecurityModule {
     // The L2 Hyperlane mailbox.
     address private immutable _mailbox;
+
+    IInterchainSecurityModule private immutable _securityModule;
 
     mapping(address => uint256) private _carbonCreditBalances;
 
@@ -31,6 +42,7 @@ contract CarbonCreditReceiver is IMessageRecipient {
 
     constructor(address mailbox) {
         _mailbox = mailbox;
+        _securityModule = new InterchainSecurityModule();
     }
 
     /**
@@ -50,4 +62,13 @@ contract CarbonCreditReceiver is IMessageRecipient {
 
         emit TotalCarbonCreditsReceived(user, balance);
     }
+
+    /// @inheritdoc ISpecifiesInterchainSecurityModule
+    function interchainSecurityModule()
+        external
+        view
+        override
+        returns (IInterchainSecurityModule) {
+            return _securityModule;
+        }
 }
